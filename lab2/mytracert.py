@@ -34,15 +34,21 @@ def calculate_checksum(data):
 
 def create_icmp_packet(packet_id, sequence):
     """Создает бинарный ICMP Echo Request пакет."""
-    # Создаем пустой заголовок (без чексуммы) и данные (текущее время)
-    header = struct.pack("bbHHh", ICMP_ECHO_REQUEST, 0, 0, packet_id, sequence)
+    # Переводим ID и Sequence в сетевой порядок байтов (Big Endian)
+    net_packet_id = socket.htons(packet_id)
+    net_sequence = socket.htons(sequence)
+
+    # Создаем пустой заголовок (без чексуммы). 
+    # Используем "bbHHH" (все H большие), чтобы числа точно поместились
+    header = struct.pack("bbHHH", ICMP_ECHO_REQUEST, 0, 0, net_packet_id, net_sequence)
     data = struct.pack("d", time.time())
     
     # Считаем чексумму для связки заголовок + данные
     my_checksum = calculate_checksum(header + data)
     
     # Пересобираем заголовок уже с правильной контрольной суммой
-    header = struct.pack("bbHHh", ICMP_ECHO_REQUEST, 0, socket.htons(my_checksum), packet_id, sequence) #упаковывает поля
+    header = struct.pack("bbHHH", ICMP_ECHO_REQUEST, 0, socket.htons(my_checksum), net_packet_id, net_sequence)
+    
     return header + data
 
 def get_node_name(ip_address, resolve_names):
@@ -106,7 +112,7 @@ def run_traceroute(target_host, resolve_names=False, max_hops=30, timeout=2.0):
                         # Достаем ICMP-заголовок (пропуская IP-заголовок)
                         iph_length = (packet_data[0] & 0xF) * 4 
                         icmp_header = packet_data[iph_length:iph_length + 8] #8 байт после айпи заголовка
-                        icmp_type, _, _, _, _ = struct.unpack("bbHHh", icmp_header) #распаковка
+                        icmp_type, _, _, _, _ = struct.unpack("bbHHH", icmp_header) #распаковка
                         
                         # Если это нужный нам ответ — вычисляем ртт печатаем значение
                         if icmp_type in (ICMP_TIME_EXCEEDED, ICMP_ECHO_REPLY):
